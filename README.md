@@ -4,8 +4,6 @@ A hackpad that can be used to play little mini games. I think it's a fun little 
 Request:
 - Soldering Iron
 
-Specifications
-
 BOM:
 - 1x XIAO RP2040
 - 16x Cherry MX Switches
