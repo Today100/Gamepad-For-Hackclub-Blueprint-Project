@@ -1,261 +1,182 @@
 import time
 import board
 import busio
-import displayio
-import terminalio
-import neopixel
 import keypad
+import adafruit_ssd1306
+import neopixel
 import random
-import rtc
 import usb_hid
-from adafruit_display_text import label
-from adafruit_displayio_ssd1306 import SSD1306
 from adafruit_hid.keyboard import Keyboard
 from adafruit_hid.keycode import Keycode
 
-"""
-Configuring Hardware Setup
-"""
+i2c = busio.I2C(scl=board.D5, sda=board.D4)
+display = adafruit_ssd1306.SSD1306_I2C(128, 32, i2c)
+status_led = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.1)
 
-#SCREEN
-displayio.release_displays()
-i2c = busio.I2C(scl=board.D1, sda=board.D0)
-display_bus = displayio.I2CDisplay(i2c, device_address=0x3c)
-display = SSD1306(display_bus, width=128, height=32)
-
-#LED
-PIXEL_PIN = board.D2
-NUM_PIXELS = 1 
-pixels = neopixel.NeoPixel(PIXEL_PIN, NUM_PIXELS, brightness=0.3, auto_write=False, pixel_order=neopixel.GRB)
-
-#KEYPAD MATRIX 
-# Cols: Pins 8,9,10,11 -> D7, D8, D9, D10
+row_pins = (board.D6, board.D3, board.D2, board.D1) 
 col_pins = (board.D7, board.D8, board.D9, board.D10)
-# Rows: Pins 7,6,5,4   -> D6, D5, D4, D3
-row_pins = (board.D6, board.D5, board.D4, board.D3)
 
-km = keypad.KeyMatrix(row_pins, col_pins)
+km = keypad.KeyMatrix(row_pins, col_pins, columns_to_anodes=True, interval=0.005)
 
-#USB KEYBOARD & CLOCK
-kbd = Keyboard(usb_hid.devices)
-r = rtc.RTC()
 
-# Set default start time if power was lost (2025-01-01 12:00:00)
-if r.datetime.tm_year < 2024:
-    r.datetime = time.struct_time((2025, 1, 1, 12, 0, 0, 0, 1, -1))
+try:
+    kbd = Keyboard(usb_hid.devices)
+    hid_active = True
+except:
+    hid_active = False
 
-"""
-Helper Functions
-"""
-def show_text(line1, line2=""):
-    # Clear screen
-    splash = displayio.Group()
-    display.root_group = splash
-    
-    # Draw Line 1
-    text_1 = label.Label(terminalio.FONT, text=line1, color=0xFFFFFF, x=2, y=6)
-    splash.append(text_1)
-    
-    # Draw Line 2
-    if line2:
-        text_2 = label.Label(terminalio.FONT, text=line2, color=0xFFFFFF, x=2, y=22)
-        splash.append(text_2)
 
-def set_led(color):
-    pixels[0] = color
-    pixels.show()
+CHAR_MAP = ["1", "2", "3", "DEL", "4", "5", "6", "+", "7", "8", "9", "-", "0", "SPC", "ENT", "MENU"]
+HID_MAP = [
+    Keycode.ONE, Keycode.TWO, Keycode.THREE, Keycode.BACKSPACE,
+    Keycode.FOUR, Keycode.FIVE, Keycode.SIX, Keycode.KEYPAD_PLUS,
+    Keycode.SEVEN, Keycode.EIGHT, Keycode.NINE, Keycode.MINUS,
+    Keycode.ZERO, Keycode.SPACE, Keycode.ENTER, None
+]
 
-def get_keypress_blocking():
-    # Stops everything until a key is pressed
-    while True:
-        event = km.events.get()
-        if event and event.pressed:
-            return event.key_number
 
-def get_keypress_nonblocking():
-    # Returns key immediately if pressed, else returns None
-    event = km.events.get()
-    if event and event.pressed:
-        return event.key_number
-    return None
+def draw_ui(l1, l2="", inv=False):
+    display.fill(0)
+    display.rect(0, 0, 128, 32, 1)
+    if inv:
+        display.fill_rect(2, 2, 124, 28, 1)
+        display.text(str(l1), 6, 6, 0)
+        display.text(str(l2), 6, 18, 0)
+    else:
+        display.text(str(l1), 6, 6, 1)
+        display.text(str(l2), 6, 18, 1)
+    display.show()
 
-"""
-Functions for Mini-Games and Modes
-"""
 
-def play_memory_game():
-    score = 0
-    sequence = []
-    
-    show_text("Memory Game!", "Get ready...")
-    time.sleep(1)
-    
-    while True:
-        # Phase 1: Show Sequence
-        show_text(f"Level {score + 1}", "Watch...")
-        new_key = random.randint(0, 15)
-        sequence.append(new_key)
-        time.sleep(1)
-        
-        for step in sequence:
-            show_text(f"KEY: {step}")
-            set_led((0, 0, 255)) # Blue
-            time.sleep(0.6)
-            show_text("")
-            set_led((0, 0, 0))
-            time.sleep(0.2)
-            
-        # Phase 2: User Input
-        show_text("Your Turn!")
-        set_led((255, 255, 0)) # Yellow
-        
-        for expected_key in sequence:
-            # Wait for user to press ANY key
-            while True:
-                user_key = get_keypress_nonblocking()
-                if user_key is not None:
-                    break
-            
-            # Check if correct
-            if user_key != expected_key:
-                set_led((255, 0, 0)) # Red
-                show_text("GAME OVER", f"Score: {score}")
-                time.sleep(3)
-                return # Exit to menu
-            
-            # Correct feedback
-            set_led((0, 255, 0)) # Green
-            time.sleep(0.1)
-            set_led((255, 255, 0)) # Back to Yellow
-            
-        score += 1
-        set_led((0, 255, 0))
-        show_text("Correct!")
-        time.sleep(0.5)
 
-def play_whack_a_mole():
-    score = 0
-    timeout = 2.0 # Gets faster!
-    
-    show_text("Whack-a-Mole!", "Hit the key!")
-    time.sleep(1.5)
-    
-    while True:
-        target_key = random.randint(0, 15)
-        show_text(f"HIT: {target_key}", f"Score: {score}")
-        set_led((255, 0, 255)) # Purple
-        
-        start_time = time.monotonic()
-        hit = False
-        
-        # Loop for the duration of 'timeout'
-        while (time.monotonic() - start_time) < timeout:
-            key = get_keypress_nonblocking()
-            if key is not None:
-                if key == target_key:
-                    hit = True
-                    break 
-                else:
-                    set_led((255, 0, 0))
-                    show_text("WRONG KEY!", f"Final: {score}")
-                    time.sleep(2)
-                    return
-        
-        if hit:
-            score += 1
-            set_led((0, 255, 0))
-            time.sleep(0.2)
-            timeout = max(0.5, timeout * 0.95) # Make it 5% faster
-        else:
-            set_led((255, 0, 0))
-            show_text("TOO SLOW!", f"Final: {score}")
-            time.sleep(2)
-            return
-
-def run_numpad():
-    # Standard Numpad Map
-    key_map = {
-        0: Keycode.SEVEN, 1: Keycode.EIGHT, 2: Keycode.NINE, 3: Keycode.KEYPAD_FORWARD_SLASH,
-        4: Keycode.FOUR,  5: Keycode.FIVE,  6: Keycode.SIX,  7: Keycode.KEYPAD_ASTERISK,
-        8: Keycode.ONE,   9: Keycode.TWO,   10: Keycode.THREE, 11: Keycode.KEYPAD_MINUS,
-        12: Keycode.ZERO, 13: Keycode.KEYPAD_PERIOD, 14: Keycode.ENTER, 15: Keycode.KEYPAD_PLUS
-    }
-
-    show_text("Numpad Mode", "Hold Key 0 Exit")
-    set_led((255, 255, 255)) # White
-    
+def run_pc_kbd():
+    draw_ui("PC KEYBOARD", "MENU TO EXIT", True)
     while True:
         event = km.events.get()
         if event:
-            key = event.key_number
-            if key in key_map:
+            idx = event.key_number
+            if CHAR_MAP[idx] == "MENU" and event.pressed: return
+            code = HID_MAP[idx]
+            if code and hid_active:
                 if event.pressed:
-                    kbd.press(key_map[key])
-                    # Exit check: Hold Key 0 for 2 seconds
-                    if key == 0:
-                        start_hold = time.monotonic()
-                        while True:
-                            if km.events.get(): # If released
-                                kbd.release(key_map[key])
-                                break
-                            if time.monotonic() - start_hold > 2.0:
-                                kbd.release_all()
-                                return # Exit
-                elif event.released:
-                    kbd.release(key_map[key])
+                    kbd.press(code)
+                    status_led[0] = (0, 255, 0)
+                else:
+                    kbd.release(code)
+                    status_led[0] = (0, 0, 0)
 
-def set_time_manually():
-    # Key 0/4: Hour +/-
-    # Key 1/5: Min +/-
-    # Key 3: Save
-    t = r.datetime
-    new_h = t.tm_hour
-    new_m = t.tm_min
-    
+def run_memory_game():
+    seq = []
     while True:
-        time_str = "{:02d}:{:02d}".format(new_h, new_m)
-        show_text("SET TIME:", f"{time_str} (3=OK)")
-        
-        key = get_keypress_blocking()
-        if key == 0: new_h = (new_h + 1) % 24
-        elif key == 4: new_h = (new_h - 1) % 24
-        elif key == 1: new_m = (new_m + 1) % 60
-        elif key == 5: new_m = (new_m - 1) % 60
-        elif key == 3: 
-            r.datetime = time.struct_time((2025, 1, 1, new_h, new_m, 0, 0, 1, -1))
-            return
-        time.sleep(0.2)
+        seq.append(random.randint(0, 9))
+        for n in seq:
+            draw_ui("WATCH:", str(n), True)
+            time.sleep(0.6)
+            draw_ui("WATCH:", " ", False)
+            time.sleep(0.2)
+        draw_ui("YOUR TURN!", "GO!")
+        for correct in seq:
+            guess = None
+            while guess is None:
+                ev = km.events.get()
+                if ev and ev.pressed:
+                    val = CHAR_MAP[ev.key_number]
+                    if val.isdigit(): guess = int(val)
+                    elif val == "MENU": return
+            if guess != correct:
+                draw_ui("FAIL!", f"SCORE: {len(seq)-1}", True)
+                status_led[0] = (255, 0, 0)
+                time.sleep(2)
+                status_led[0] = (0, 0, 0)
+                return
+        draw_ui("CORRECT!", "NEXT...")
+        status_led[0] = (0, 255, 0)
+        time.sleep(0.8)
+        status_led[0] = (0, 0, 0)
 
-"""
-Main Loop
-"""
+def run_mole_game():
+    score = 0
+    for i in range(10):
+        target = random.randint(0, 11)
+        draw_ui(f"HIT: {CHAR_MAP[target]}", f"SCORE: {score}", True)
+        start = time.monotonic()
+        hit = False
+        while time.monotonic() - start < 1.2:
+            ev = km.events.get()
+            if ev and ev.pressed:
+                if ev.key_number == target:
+                    score += 1
+                    hit = True
+                    break
+                elif CHAR_MAP[ev.key_number] == "MENU": return
+        status_led[0] = (0, 255, 0) if hit else (255, 0, 0)
+        time.sleep(0.3)
+        status_led[0] = (0, 0, 0)
+    draw_ui("GAME OVER", f"SCORE: {score}")
+    time.sleep(2)
 
-last_update = 0
-set_led((0, 255, 255)) # Cyan startup
+def run_calc():
+    expr = ""
+    while True:
+        draw_ui("CALC (ENT:=)", expr)
+        ev = km.events.get()
+        if ev and ev.pressed:
+            val = CHAR_MAP[ev.key_number]
+            if val == "MENU": return
+            elif val == "ENT":
+                try: expr = str(eval(expr.replace('SPC', '')))
+                except: expr = "ERR"
+            elif val == "DEL": expr = ""
+            else: expr += val
+
+def run_24_game():
+    nums = [random.randint(1, 9) for _ in range(4)]
+    draw_ui("MAKE 24", f"NUMS: {nums}")
+    while True:
+        ev = km.events.get()
+        if ev and ev.pressed and CHAR_MAP[ev.key_number] == "MENU": return
+
+def run_sleep():
+    while True:
+        for f in ["( - . - ) zZZ", "( - o - ) zZ ", "( ^ . ^ )  *"]:
+            draw_ui("SLEEPING...", f)
+            time.sleep(1)
+            ev = km.events.get()
+            if ev and ev.pressed and CHAR_MAP[ev.key_number] == "MENU": return
+
+
+menu_items = ["PC KEYBOARD", "CALCULATOR", "MEMORY GAME", "24 GAME", "WHACK-A-MOLE", "SLEEP MODE"]
+m_idx = 0
+start_idx = 0
 
 while True:
-    # 1. Update Clock (Once per second)
-    now = time.monotonic()
-    if now - last_update > 1.0:
-        current_t = r.datetime
-        time_str = "{:02d}:{:02d}:{:02d}".format(current_t.tm_hour, current_t.tm_min, current_t.tm_sec)
-        # Show Menu Options on line 2
-        show_text(f"TIME: {time_str}", "0:Mem 1:Mol 2:Num")
-        last_update = now
     
-    # 2. Check for Menu Selection
-    key = get_keypress_nonblocking()
-    if key is not None:
-        if key == 0:
-            play_memory_game()
-        elif key == 1:
-            play_whack_a_mole()
-        elif key == 2:
-            run_numpad()
-        elif key == 15: # Bottom Right Key
-            set_time_manually()
-        
-        # Reset Menu after app closes
-        set_led((0, 255, 255)) 
-        show_text("Loading...")
-        time.sleep(0.5)
+    if m_idx < start_idx: start_idx = m_idx
+    elif m_idx >= start_idx + 3: start_idx = m_idx - 2
+    
+    display.fill(0)
+    for i in range(3):
+        idx = start_idx + i
+        if idx < len(menu_items):
+            y = i * 11
+            if idx == m_idx:
+                display.fill_rect(0, y, 122, 10, 1)
+                display.text(menu_items[idx], 4, y + 1, 0)
+            else:
+                display.text(menu_items[idx], 4, y + 1, 1)
+    display.fill_rect(125, int(m_idx * (32/len(menu_items))), 2, 5, 1)
+    display.show()
+
+    ev = km.events.get()
+    if ev and ev.pressed:
+        v = CHAR_MAP[ev.key_number]
+        if v == "+": m_idx = (m_idx - 1) % len(menu_items)
+        elif v == "-": m_idx = (m_idx + 1) % len(menu_items)
+        elif v == "ENT":
+            mode = menu_items[m_idx]
+            if mode == "PC KEYBOARD": run_pc_kbd()
+            elif mode == "CALCULATOR": run_calc()
+            elif mode == "MEMORY GAME": run_memory_game()
+            elif mode == "WHACK-A-MOLE": run_mole_game()
+            elif mode == "24 GAME": run_24_game()
+            elif mode == "SLEEP MODE": run_sleep()
