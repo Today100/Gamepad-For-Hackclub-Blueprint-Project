@@ -4,7 +4,7 @@ A hackpad that can be used to play little mini games. I think it's a fun little 
 Link to Blueprint: [https://blueprint.hackclub.com/projects/8584](url)
 
 ## **Build:**
-[https://youtu.be/U4rZsfkFq84](url)
+Demo: [https://youtu.be/U4rZsfkFq84](url)
 
 
 <img width="385" height="500" alt="image" src="https://github.com/user-attachments/assets/602dc6d1-a1de-45b5-9e29-909cc82d4b38" />
