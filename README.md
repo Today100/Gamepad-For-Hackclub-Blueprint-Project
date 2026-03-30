@@ -1,5 +1,6 @@
 # Gamepad - For Hackclub Blueprint Project
 A hackpad that can be used to play little mini games. I think it's a fun little thing to use to take a break.
+Link to Blueprint: [https://blueprint.hackclub.com/projects/8584](url)
 
 ## **Build:**
 [https://youtu.be/U4rZsfkFq84](url)
