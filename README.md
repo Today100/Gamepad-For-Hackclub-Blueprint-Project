@@ -1,9 +1,13 @@
 # Gamepad - For Hackclub Blueprint Project
 A hackpad that can be used to play little mini games. I think it's a fun little thing to use to take a break.
 
-**Request:**
-- Soldering Iron
+## **Build:**
+[https://youtu.be/U4rZsfkFq84](url)
 
+
+<img width="385" height="500" alt="image" src="https://github.com/user-attachments/assets/602dc6d1-a1de-45b5-9e29-909cc82d4b38" />
+
+## **Design:**
 BOM:
 - 1x XIAO RP2040
 - 16x Cherry MX Switches
